@@ -1,0 +1,228 @@
+---
+title: "Population Density and COVID"
+author: "Ola Klingberg"
+date: "2023-06-13"
+output: html_document
+---
+I will investigate whether there exists a correlation between the population density of U.S. counties and their number of COVID cases and deaths per million people, at different points during the pandemic. My hypothesis is that the pandemic initially spread faster through densely-populated areas, so that early in the pandemic, we should see such a correlation, but as the pandemic dragged on, it eventually penetrated less-densely-populated areas to the same degree, causing that correlation to weaken or even disappear.
+
+
+```{r Setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import libraries and COVID data
+```{r Libraries}
+# Import libraries
+library(tidyverse)
+library(lubridate)
+```
+
+```{r John Hopkins COVID data}
+# Import data from John Hopkins.
+# The two files contain: 1) U.S. confirmed cases, and 2) U.S. deaths.
+url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+file_names <- c("time_series_covid19_confirmed_US.csv",
+                "time_series_covid19_deaths_US.csv")
+urls <- str_c(url, file_names)
+
+US_cases <- read_csv(urls[1], show_col_types = FALSE)
+US_deaths <- read_csv(urls[2], show_col_types = FALSE)
+```
+
+## Clean the COVID data
+```{r Tidy the COVID data}
+# The data frame with cases has one col per date. 
+# Pivot and put case numbers in a date col.
+US_cases <- US_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+
+# Do the same thing with the deaths data.
+US_deaths <- US_deaths %>%
+  pivot_longer(cols = -(UID:Population),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat, Long_))
+
+# Join cases and deaths into one data frame.
+US <- US_cases %>%
+  full_join(US_deaths)
+```
+
+```{r Deaths and cases per million people}
+# Add cols for deaths and cases per million people.
+US <- US %>% 
+  mutate(deaths_per_mill = deaths * 1000000 / Population,
+         cases_per_mill = cases * 1000000 / Population)
+```
+
+
+## Import population-density data
+```{r Population-density data}
+# The data contains population density for U.S. counties.
+url = "https://raw.githubusercontent.com/camillol/cs424p3/master/data/Population-Density%20By%20County.csv"
+pop_density = read_csv(url, show_col_types = FALSE)
+```
+
+## Clean the population-density data
+```{r Tidy population-density data}
+# Select relevant cols and rename them.
+# Convert square miles to square km. This is not strictly necessary, 
+# since the data will only be compared against itself,
+# but it's always a good idea to adhere to international standard 
+# for units of measurements instead of using local ones.
+pop_density <- pop_density %>%  select(c('GEO.display-label', 'GCT_STUB.display-label', 
+                          'Density per square mile of land area')) %>% 
+  rename(state = 'GEO.display-label',
+         county = 'GCT_STUB.display-label',
+         dens_sq_mile = 'Density per square mile of land area') %>%
+  mutate(dens_sq_km = dens_sq_mile / 2.58888)
+
+# Remove the word "County" from the county names, 
+# so as to follow the same naming convention as in the COVID data.
+pop_density$county <- str_replace(pop_density$county, " County", "")
+
+# Create a combined key following the same naming convention as the COVID data.
+pop_density <- pop_density %>%
+  unite("Combined_Key",
+        c(county, state),
+        sep = ", ",
+        na.rm = TRUE,
+        remove = FALSE)
+
+pop_density$Combined_Key <- paste(str_trim(pop_density$Combined_Key), "US", sep = ", ")
+```
+
+## Merge data sets
+```{r Merge data sets}
+# Join the COVID and the population-density data.
+# Use a right join, so as to only keep data for counties for which we have 
+# population-density data.
+US <- US %>% right_join(pop_density, by = "Combined_Key")
+
+# Reorder the cols
+US <- US %>% select(Combined_Key, date, dens_sq_km, 
+                    cases_per_mill, deaths_per_mill, 
+                    everything())
+```
+
+## Handle NA values
+```{r Check number of rows with NA}
+# Check number of rows, number of rows with NA values,
+# and proportion of rows with NA values.
+nrow(US)
+sum(is.na(US))
+sum(is.na(US)) / nrow(US)
+```
+
+```{r Drop NA}
+# The proportion of rows containing NA values is very small, 
+# so we'll just drop those rows.
+US <- drop_na(US)
+```
+
+## Initial look at correlation
+I will start by looking at the death numbers and their correlation with population density.
+```{r Correleation between deaths and pop density at two dates}
+# Check the correlation between population density
+# and the accumulated number of deaths by a certain date.
+# Look at one date early in the pandemic, and one recent date.
+US_2020_06_01 <- US[US$date == "2020-06-01",]
+US_2023_03_01 <- US[US$date == "2023-03-01",]
+
+cor(x = US_2020_06_01$dens_sq_km, y = US_2020_06_01$deaths_per_mill)
+cor(x = US_2023_03_01$dens_sq_km, y = US_2023_03_01$deaths_per_mill)
+```
+Early in the pandemic (2020-06-01), there is indeed a correlation between the population density of a county and the accumulated number of deaths per million people, but the correlation is weaker (0.37) than I had anticipated. As hypothesized, the correlation eventually disappears. 
+
+## Visualize correlation 2020-06-01
+Let's graph the relationship.
+```{r Visualize deaths in relation to population density.}
+US[US$date == "2020-06-01",] %>% 
+ggplot(aes(x = dens_sq_km, y = deaths_per_mill)) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = lm) +
+  labs(title = "Population Density and COVID",
+       subtitle = "Correlation between the population density of a county and the number of deaths \nper million people by June 1, 2020.",
+       x = "Population Density",
+       y = "Number of deaths per million people",
+       color = NULL)
+```
+
+The graph shows a certain correlation, but the graph is hard to read, since the great majority of data points are congregated in one corner. Let's make both the x- and the y-axes logarithmic, to get a clearer overview of the spread of the data.
+```{r Visualize the same as above, but using logarithmic scales.}
+US[US$date == "2020-06-01",] %>% 
+ggplot(aes(x = dens_sq_km, y = deaths_per_mill)) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = lm) +
+  labs(title = "Population Density and COVID",
+       subtitle = "Correlation between the population density of a county and the number of deaths \nper million people by June 1, 2020.",
+       x = "Population Density",
+       y = "Number of deaths per million people",
+       color = NULL) +
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+While the model line shows a certain correlation, it's not very obvious from looking just at the scatter plot that there indeed is a correlation.
+
+## Change in correlation coefficient through time
+Let's now look at how the correlation coefficient has changed over time throughout the pandemic.
+```{r Create sequence of dates}
+# Crete a vector containing the first date of each month 
+# from April 2020 till March 2023.
+meas_dates <- seq(as.Date("2020-04-01"), as.Date("2023-03-01"), by = "months")
+```
+
+```{r Correlation pop density and cases/deaths throughout the pandemic.}
+# Calculate the correlation coefficient between the population density
+# and the number of accumulated cases/deaths at the first of each month
+# from the beginning of the pandemic and till the end of the data.
+cases_corr = c()
+deaths_corr = c()
+
+for (meas_date in meas_dates) {
+  data_for_meas_date = (US[US$date == meas_date,])
+  cases_corr <- append(cases_corr, cor(x = data_for_meas_date$dens_sq_km, y = data_for_meas_date$cases_per_mill))
+  deaths_corr <- append(deaths_corr, cor(x = data_for_meas_date$dens_sq_km, y = data_for_meas_date$deaths_per_mill))
+  }
+```
+
+```{r Combine correlation data in one dataframe}
+# Create a data frame with the dates and correlation coefficients for each date.
+correlation_by_dates = data.frame(date = meas_dates, 
+                                  cases_corr_coeff = cases_corr,
+                                  deaths_corr_coeff = deaths_corr)
+correlation_by_dates
+```
+
+```{r Visualize correlation}
+# Plot the correlation between population density
+# and accumulated number of cases/deaths throughout the pandemic.
+correlation_by_dates %>% 
+  ggplot() +
+  geom_line(aes(x = date, y = cases_corr, color = "Cases")) +
+  geom_line(aes(x = date, y = deaths_corr, color = "Deaths")) +
+  labs(title = "Population Density and COVID",
+       subtitle = "Correlation between the population density of a county and the accumulated number \nof cases/deaths per million people at different points during the pandemic.",
+       x = "",
+       y = "Correlation Coefficient with Population Density",
+       color = NULL)
+```
+
+Here we see again that early in the pandemic, there is a certain correlation between the population density and number of deaths per million people. There is a similar correlation between population density and number of cases. But both these correlations are rather weak even to start with (< 0.4) and dissipate quite quickly: by the end of 2020, both correlations are practically gone.
+
+## Conclusion
+My initial hypothesis proved correct in principle, though the correlation was weaker and dissipated more quickly than I had anticipated.
+
+## Sources of bias
+COVID case numbers are most likely strongly under-reported, as far from every case is diagnosed. The magnitude of this under-reporting might very well be different in urban areas as compared with rural areas, and if so, it could skew the results presented here. Death numbers are most likely more reliable, as the great majority of deaths are reported to the authorities. But there is still the possibility that some deaths are attributed to the wrong cause.
+
+
