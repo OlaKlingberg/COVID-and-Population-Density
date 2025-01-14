@@ -11,7 +11,7 @@ The project investigates the relationship between population density and the spr
 
 ## Results
 
-![Population Density and COVID](https://github.com/user-attachments/assets/4f223dda-edb4-4454-bbcf-1d36f3305f59)
+<img src = "https://github.com/user-attachments/assets/4f223dda-edb4-4454-bbcf-1d36f3305f59" alt = "Population Density and COVID" width = "500">
 
 As can be seen in the graph, there was a certain correlation between population density and COVID cases/deaths at the beginning of the pandemic, but the correlation was weaker than I had expected. As I hypothesized, the correlation eventually disappeared.
 
