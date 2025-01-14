@@ -9,7 +9,7 @@ The project investigates the relationship between population density and the spr
 * **Statistical Analysis**: Employs statistical methods to assess correlations between population density and COVID-19 case and fatality numbers.
 * **Visualization**: Generates charts and maps to illustrate the relationship between population density and the spread of COVID-19.
 
-## Results
+## Key Results
 
 <img src = "https://github.com/user-attachments/assets/4f223dda-edb4-4454-bbcf-1d36f3305f59" alt = "Population Density and COVID" width = "600">
 
