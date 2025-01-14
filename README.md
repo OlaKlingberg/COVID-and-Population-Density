@@ -1,5 +1,5 @@
 # COVID and Population Density
-This is the second of two projects developed for the course Data Science as a Field (DTSA-5301) at University of Colorado Boulder.
+This is the second of two projects developed for the introductory course Data Science as a Field (DTSA-5301) at University of Colorado Boulder.
 
 ## Description
 The project investigates the relationship between population density and the spread of COVID-19. The hypothesis is that COVID initially spread faster through densely populated counties in the U.S. than through less densely populated ones, but that this correlation should disappear over time, as COVID 
